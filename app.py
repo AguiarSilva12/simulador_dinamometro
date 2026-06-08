@@ -83,40 +83,54 @@ def calc_air_density(temperature_c: float, pressure_hpa: float) -> float:
     return P / (R * T)
 
 st.set_page_config(page_title="Simulador Dinamômetro Moto", layout="wide")
-st.title("🚀 Simulador de Dinamômetro com Freio Hidráulico")
+
+# ── Compact layout: tighten Streamlit's default padding ─────────────────────
+st.markdown(
+    """
+    <style>
+        /* Reduce top padding of the main block */
+        .block-container { padding-top: 0.6rem !important; padding-bottom: 0.5rem !important; }
+        /* Tighten sidebar padding */
+        section[data-testid="stSidebar"] > div:first-child { padding-top: 0.6rem; }
+        /* Reduce gap between widgets */
+        div[data-testid="stVerticalBlock"] > div { gap: 0.25rem; }
+        /* Smaller metric labels */
+        [data-testid="stMetricLabel"] { font-size: 0.78rem !important; }
+        [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown("### 🚀 Simulador de Dinamômetro com Freio Hidráulico")
 
 st.sidebar.header("Parâmetros do Dinamômetro")
 
 raio_rolo_mm = st.sidebar.slider(
     "Raio do Rolo (mm)", 50, 300, 150, 1,
-    help="Raio do cilindro de contato com o pneu. Determina a relação entre a velocidade linear do pneu e a rotação do rolo, afetando diretamente o cálculo de RPM e torque. Valores típicos: 50–300 mm."
+    help="Raio do cilindro de contato com o pneu (50–300 mm)."
 )
 raio_rolo_m = raio_rolo_mm / 1000
 
 massa_total_kg = st.sidebar.slider(
     "Massa Total (Moto + Piloto) kg", 100, 500, 280, 5,
-    help="Soma da massa da motocicleta e do piloto. Influencia a resistência ao rolamento (F_rr = C_rr × m × g) e, indiretamente, a carga sobre o rolo. Valores típicos: 100–500 kg."
+    help="Massa da moto + piloto. Afeta F_rr = C_rr × m × g (100–500 kg)."
 )
 C_rr = st.sidebar.slider(
     "C_rr - Coef. Rolamento", 0.005, 0.05, 0.015, 0.001,
-    help="Coeficiente de resistência ao rolamento do pneu. Representa a energia dissipada por deformação do pneu e do rolo. Pneus de moto em asfalto ficam entre 0,005 e 0,02; valores maiores indicam maior perda. Valores típicos: 0,005–0,05."
+    help="Coeficiente de resistência ao rolamento do pneu (0,005–0,05)."
 )
 CdA = st.sidebar.slider(
     "CdA - Área Frontal Efetiva (m²)", 0.3, 1.2, 0.6, 0.05,
-    help="Produto do coeficiente de arrasto aerodinâmico (Cd) pela área frontal (A) da moto+piloto. Determina a força de arrasto (F_d = ½ × ρ × v² × CdA), que cresce com o quadrado da velocidade. Valores típicos para motos: 0,3–1,2 m²."
+    help="Cd × área frontal da moto+piloto. F_d = ½ρv²CdA (0,3–1,2 m²)."
 )
 # ── Densidade do Ar ─────────────────────────────────────────────────────────
-st.sidebar.markdown("---")
-st.sidebar.subheader("🌍 Densidade do Ar (kg/m³)")
+st.sidebar.markdown("**🌍 Densidade do Ar (kg/m³)**")
 
 usar_geolocalizacao = st.sidebar.checkbox(
     "Usar geolocalização para ajustar densidade",
     value=False,
-    help=(
-        "Quando ativado, detecta sua localização pelo navegador e consulta "
-        "altitude, temperatura e pressão atmosférica reais via Open-Meteo "
-        "para calcular a densidade do ar automaticamente."
-    ),
+    help="Detecta localização e consulta altitude/temperatura via Open-Meteo.",
 )
 
 if usar_geolocalizacao:
@@ -178,7 +192,7 @@ if usar_geolocalizacao:
                 )
 
                 # Show location info in an expander inside the sidebar
-                with st.sidebar.expander("📊 Dados da localização", expanded=True):
+                with st.sidebar.expander("📊 Dados da localização", expanded=False):
                     st.markdown(f"**📍 Local:** {weather['city']}")
                     st.markdown(f"**🏔️ Altitude:** {weather['altitude_m']:.0f} m")
                     st.markdown(f"**🌡️ Temperatura:** {weather['temperature_c']:.1f} °C")
@@ -198,10 +212,7 @@ if usar_geolocalizacao:
                     max_value=2.0,
                     step=0.001,
                     format="%.4f",
-                    help=(
-                        "Valor calculado automaticamente com base na sua localização. "
-                        "Você pode ajustar manualmente se necessário."
-                    ),
+                    help="Calculado pela localização. Ajuste manualmente se necessário.",
                 )
 else:
     rho = st.sidebar.number_input(
@@ -211,40 +222,36 @@ else:
         max_value=2.0,
         step=0.001,
         format="%.3f",
-        help=(
-            "Densidade do ar no local do ensaio. Varia com altitude e temperatura: "
-            "ao nível do mar a 15 °C vale 1,225 kg/m³; em altitudes elevadas ou dias "
-            "quentes o valor é menor, reduzindo o arrasto aerodinâmico. "
-            "Valor padrão ISA: 1,225 kg/m³."
-        ),
+        help="Densidade do ar no ensaio. Padrão ISA ao nível do mar a 15 °C: 1,225 kg/m³.",
     )
-st.sidebar.markdown("---")
 torque_freio_max_Nm = st.sidebar.slider(
     "Torque Máx Freio Hidráulico (Nm)", 50, 500, 200, 10,
-    help="Torque máximo que o freio hidráulico consegue aplicar ao rolo. Limita a força de frenagem disponível para absorver a potência da moto; se o torque de perdas calculado superar este valor, o freio opera no limite. Valores típicos: 50–500 Nm."
+    help="Torque máximo do freio hidráulico no rolo (50–500 Nm)."
 )
 
 # === CONTROLES DE SIMULAÇÃO ESPECÍFICA ===
-st.subheader("🎯 Simulação Específica")
+st.markdown("**🎯 Simulação Específica**")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    vel_especifica = st.number_input("Velocidade para simular (km/h)", 
-                                   min_value=0.0, max_value=220.0, 
-                                   value=100.0, step=1.0, 
-                                   help="Digite o valor ou use os botões")
-    col_v1, col_v2, col_v3 = st.columns([1,2,1])
-    if col_v2.button("➖ 5 km/h", use_container_width=True):
+    col_inp, col_minus, col_plus = st.columns([3, 1, 1])
+    vel_especifica = col_inp.number_input(
+        "Velocidade (km/h)",
+        min_value=0.0, max_value=220.0, value=100.0, step=1.0,
+        help="Velocidade alvo para a simulação pontual."
+    )
+    if col_minus.button("−5", use_container_width=True):
         vel_especifica = max(0.0, vel_especifica - 5)
-    if col_v2.button("➕ 5 km/h", use_container_width=True):
+    if col_plus.button("+5", use_container_width=True):
         vel_especifica = min(220.0, vel_especifica + 5)
 
 with col2:
-    tempo_min = st.number_input("Tempo (minutos)", min_value=0, max_value=15, value=5, step=1)
-    tempo_seg = st.slider("Segundos adicionais", 0, 59, 0)
+    col_tm, col_ts = st.columns(2)
+    tempo_min = col_tm.number_input("Min", min_value=0, max_value=15, value=5, step=1)
+    tempo_seg = col_ts.number_input("Seg", min_value=0, max_value=59, value=0, step=1)
     tempo_total_seg = tempo_min * 60 + tempo_seg
-    st.info(f"⏱️ Tempo total: **{tempo_min} min {tempo_seg} seg**")
+    st.caption(f"⏱️ Tempo total: **{tempo_min} min {tempo_seg} seg**")
 
 # ================== CÁLCULOS ==================
 vel_kmh = np.linspace(0, 220, 45)
@@ -272,7 +279,7 @@ df = pd.DataFrame({
 })
 
 # ================== RESULTADOS ==================
-st.subheader("📊 Resultados da Simulação")
+st.markdown("**📊 Resultados da Simulação**")
 
 # Destaque da velocidade escolhida
 idx = (np.abs(df['Velocidade (km/h)'] - vel_especifica)).argmin()
@@ -281,26 +288,28 @@ row = df.iloc[idx]
 col_m1, col_m2 = st.columns([3, 2])
 
 with col_m1:
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, use_container_width=True, height=220)
 
 with col_m2:
     st.success(f"**Resultado em {vel_especifica:.0f} km/h**")
-    st.metric("RPM do Rolo", f"{row['RPM Rolo']}")
-    st.metric("Força de Perdas", f"{row['F_perdas (N)']} N")
-    st.metric("Torque de Perdas", f"{row['Torque Perdas (Nm)']} Nm")
-    st.metric("Torque Freio Aplicado", f"{row['Torque Freio (Nm)']} Nm")
+    mc1, mc2 = st.columns(2)
+    mc1.metric("RPM do Rolo", f"{row['RPM Rolo']}")
+    mc2.metric("Força de Perdas", f"{row['F_perdas (N)']} N")
+    mc1.metric("Torque de Perdas", f"{row['Torque Perdas (Nm)']} Nm")
+    mc2.metric("Torque Freio", f"{row['Torque Freio (Nm)']} Nm")
     st.metric("Potência no Freio", f"{row['Potência Freio (kW)']} kW")
 
     st.download_button(
-        label="📥 Baixar Planilha Excel",
+        label="📥 Baixar CSV",
         data=df.to_csv(index=False).encode('utf-8'),
         file_name="resultados_dinamometro.csv",
-        mime="text/csv"
+        mime="text/csv",
+        use_container_width=True,
     )
 
 # ================== GRÁFICOS ==================
-st.subheader("📈 Gráficos")
-fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+st.markdown("**📈 Gráficos**")
+fig, axs = plt.subplots(2, 2, figsize=(10, 5))
 
 axs[0,0].plot(vel_kmh, F_perdas, label='Perdas Totais')
 axs[0,0].set_xlabel('Velocidade (km/h)')
@@ -327,8 +336,7 @@ axs[1,1].set_ylabel('Potência (kW)')
 axs[1,1].legend()
 axs[1,1].grid()
 
-plt.tight_layout()
-st.pyplot(fig)
+plt.tight_layout(pad=0.8)
+st.pyplot(fig, use_container_width=True)
 
-st.info("🔧 Ajuste os parâmetros na barra lateral e a velocidade/tempo acima. Tudo atualiza em tempo real!")
-st.caption("Projeto Dinamômetro com Freio Hidráulico de Moto - Rolo + Sensor de Rotação + Célula de Carga")
+st.caption("🔧 Ajuste os parâmetros na barra lateral — tudo atualiza em tempo real. | Projeto Dinamômetro com Freio Hidráulico de Moto")
