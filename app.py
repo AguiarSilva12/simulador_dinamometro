@@ -19,6 +19,29 @@ CdA = st.sidebar.slider("CdA - Área Frontal Efetiva (m²)", 0.3, 1.2, 0.6, 0.05
 rho = st.sidebar.number_input("Densidade do Ar (kg/m³)", value=1.225)
 torque_freio_max_Nm = st.sidebar.slider("Torque Máx Freio Hidráulico (Nm)", 50, 500, 200, 10)
 
+# === CONTROLES DE SIMULAÇÃO ESPECÍFICA ===
+st.subheader("🎯 Simulação Específica")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    vel_especifica = st.number_input("Velocidade para simular (km/h)", 
+                                   min_value=0.0, max_value=220.0, 
+                                   value=100.0, step=1.0, 
+                                   help="Digite o valor ou use os botões")
+    col_v1, col_v2, col_v3 = st.columns([1,2,1])
+    if col_v2.button("➖ 5 km/h", use_container_width=True):
+        vel_especifica = max(0.0, vel_especifica - 5)
+    if col_v2.button("➕ 5 km/h", use_container_width=True):
+        vel_especifica = min(220.0, vel_especifica + 5)
+
+with col2:
+    tempo_min = st.number_input("Tempo (minutos)", min_value=0, max_value=15, value=5, step=1)
+    tempo_seg = st.slider("Segundos adicionais", 0, 59, 0)
+    tempo_total_seg = tempo_min * 60 + tempo_seg
+    st.info(f"⏱️ Tempo total: **{tempo_min} min {tempo_seg} seg**")
+
+# ================== CÁLCULOS ==================
 vel_kmh = np.linspace(0, 220, 45)
 vel_ms = vel_kmh / 3.6
 
@@ -43,33 +66,64 @@ df = pd.DataFrame({
     'Potência Freio (kW)': np.round(potencia_freio_kw, 2)
 })
 
+# ================== RESULTADOS ==================
 st.subheader("📊 Resultados da Simulação")
-col1, col2 = st.columns(2)
-with col1:
+
+# Destaque da velocidade escolhida
+idx = (np.abs(df['Velocidade (km/h)'] - vel_especifica)).argmin()
+row = df.iloc[idx]
+
+col_m1, col_m2 = st.columns([3, 2])
+
+with col_m1:
     st.dataframe(df, use_container_width=True)
 
-with col2:
-    st.download_button("Baixar Planilha Excel", df.to_csv(index=False).encode('utf-8'), "resultados_dinamometro.csv", "text/csv")
+with col_m2:
+    st.success(f"**Resultado em {vel_especifica:.0f} km/h**")
+    st.metric("RPM do Rolo", f"{row['RPM Rolo']}")
+    st.metric("Força de Perdas", f"{row['F_perdas (N)']} N")
+    st.metric("Torque de Perdas", f"{row['Torque Perdas (Nm)']} Nm")
+    st.metric("Torque Freio Aplicado", f"{row['Torque Freio (Nm)']} Nm")
+    st.metric("Potência no Freio", f"{row['Potência Freio (kW)']} kW")
 
-# Gráficos
+    st.download_button(
+        label="📥 Baixar Planilha Excel",
+        data=df.to_csv(index=False).encode('utf-8'),
+        file_name="resultados_dinamometro.csv",
+        mime="text/csv"
+    )
+
+# ================== GRÁFICOS ==================
+st.subheader("📈 Gráficos")
 fig, axs = plt.subplots(2, 2, figsize=(12, 8))
 
 axs[0,0].plot(vel_kmh, F_perdas, label='Perdas Totais')
-axs[0,0].set_xlabel('Velocidade (km/h)'); axs[0,0].set_ylabel('Força (N)'); axs[0,0].legend(); axs[0,0].grid()
+axs[0,0].set_xlabel('Velocidade (km/h)')
+axs[0,0].set_ylabel('Força (N)')
+axs[0,0].legend()
+axs[0,0].grid()
 
 axs[0,1].plot(vel_kmh, torque_perdas_Nm, 'r', label='Torque Perdas')
 axs[0,1].plot(vel_kmh, torque_aplicado, 'g--', label='Torque Freio')
-axs[0,1].set_xlabel('Velocidade (km/h)'); axs[0,1].set_ylabel('Torque (Nm)'); axs[0,1].legend(); axs[0,1].grid()
+axs[0,1].set_xlabel('Velocidade (km/h)')
+axs[0,1].set_ylabel('Torque (Nm)')
+axs[0,1].legend()
+axs[0,1].grid()
 
 axs[1,0].plot(vel_kmh, rpm_rolo, 'b')
-axs[1,0].set_xlabel('Velocidade (km/h)'); axs[1,0].set_ylabel('RPM Rolo'); axs[1,0].grid()
+axs[1,0].set_xlabel('Velocidade (km/h)')
+axs[1,0].set_ylabel('RPM Rolo')
+axs[1,0].grid()
 
 axs[1,1].plot(vel_kmh, potencia_perdas_kw, label='Perdas (kW)')
 axs[1,1].plot(vel_kmh, potencia_freio_kw, 'g', label='Freio Hidráulico')
-axs[1,1].set_xlabel('Velocidade (km/h)'); axs[1,1].set_ylabel('Potência (kW)'); axs[1,1].legend(); axs[1,1].grid()
+axs[1,1].set_xlabel('Velocidade (km/h)')
+axs[1,1].set_ylabel('Potência (kW)')
+axs[1,1].legend()
+axs[1,1].grid()
 
 plt.tight_layout()
 st.pyplot(fig)
 
-st.info("🔧 Ajuste os sliders na barra lateral e veja os resultados em tempo real!")
-st.caption("Simulador para dinamômetro com freio hidráulico, rolo, sensor de rotação e célula de carga")
+st.info("🔧 Ajuste os parâmetros na barra lateral e a velocidade/tempo acima. Tudo atualiza em tempo real!")
+st.caption("Projeto Dinamômetro com Freio Hidráulico de Moto - Rolo + Sensor de Rotação + Célula de Carga")
