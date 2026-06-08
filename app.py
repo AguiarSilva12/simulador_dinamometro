@@ -12,12 +12,32 @@ st.title("🚀 Simulador de Dinamômetro com Freio Hidráulico")
 
 st.sidebar.header("Parâmetros do Dinamômetro")
 
-raio_rolo_m = st.sidebar.slider("Raio do Rolo (m)", 0.05, 0.30, 0.15, 0.01)
-massa_total_kg = st.sidebar.slider("Massa Total (Moto + Piloto) kg", 100, 500, 280, 5)
-C_rr = st.sidebar.slider("C_rr - Coef. Rolamento", 0.005, 0.05, 0.015, 0.001)
-CdA = st.sidebar.slider("CdA - Área Frontal Efetiva (m²)", 0.3, 1.2, 0.6, 0.05)
-rho = st.sidebar.number_input("Densidade do Ar (kg/m³)", value=1.225)
-torque_freio_max_Nm = st.sidebar.slider("Torque Máx Freio Hidráulico (Nm)", 50, 500, 200, 10)
+raio_rolo_mm = st.sidebar.slider(
+    "Raio do Rolo (mm)", 50, 300, 150, 1,
+    help="Raio do cilindro de contato com o pneu. Determina a relação entre a velocidade linear do pneu e a rotação do rolo, afetando diretamente o cálculo de RPM e torque. Valores típicos: 50–300 mm."
+)
+raio_rolo_m = raio_rolo_mm / 1000
+
+massa_total_kg = st.sidebar.slider(
+    "Massa Total (Moto + Piloto) kg", 100, 500, 280, 5,
+    help="Soma da massa da motocicleta e do piloto. Influencia a resistência ao rolamento (F_rr = C_rr × m × g) e, indiretamente, a carga sobre o rolo. Valores típicos: 100–500 kg."
+)
+C_rr = st.sidebar.slider(
+    "C_rr - Coef. Rolamento", 0.005, 0.05, 0.015, 0.001,
+    help="Coeficiente de resistência ao rolamento do pneu. Representa a energia dissipada por deformação do pneu e do rolo. Pneus de moto em asfalto ficam entre 0,005 e 0,02; valores maiores indicam maior perda. Valores típicos: 0,005–0,05."
+)
+CdA = st.sidebar.slider(
+    "CdA - Área Frontal Efetiva (m²)", 0.3, 1.2, 0.6, 0.05,
+    help="Produto do coeficiente de arrasto aerodinâmico (Cd) pela área frontal (A) da moto+piloto. Determina a força de arrasto (F_d = ½ × ρ × v² × CdA), que cresce com o quadrado da velocidade. Valores típicos para motos: 0,3–1,2 m²."
+)
+rho = st.sidebar.number_input(
+    "Densidade do Ar (kg/m³)", value=1.225,
+    help="Densidade do ar no local do ensaio. Varia com altitude e temperatura: ao nível do mar a 15 °C vale 1,225 kg/m³; em altitudes elevadas ou dias quentes o valor é menor, reduzindo o arrasto aerodinâmico. Valor padrão ISA: 1,225 kg/m³."
+)
+torque_freio_max_Nm = st.sidebar.slider(
+    "Torque Máx Freio Hidráulico (Nm)", 50, 500, 200, 10,
+    help="Torque máximo que o freio hidráulico consegue aplicar ao rolo. Limita a força de frenagem disponível para absorver a potência da moto; se o torque de perdas calculado superar este valor, o freio opera no limite. Valores típicos: 50–500 Nm."
+)
 
 # === CONTROLES DE SIMULAÇÃO ESPECÍFICA ===
 st.subheader("🎯 Simulação Específica")
