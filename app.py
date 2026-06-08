@@ -2,10 +2,85 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import requests
+from datetime import datetime
 
 # Configuração para ambiente headless (Railway)
 import matplotlib
 matplotlib.use('Agg')
+
+# ── Geolocation helper ──────────────────────────────────────────────────────
+
+def fetch_weather_and_altitude(lat: float, lon: float) -> dict | None:
+    """
+    Fetch current temperature (°C) and surface pressure (hPa) from Open-Meteo,
+    plus elevation (m) from the Open-Meteo elevation endpoint.
+    Returns a dict with keys: altitude_m, temperature_c, pressure_hpa, city.
+    Returns None on any network / parsing error.
+    """
+    try:
+        # Elevation
+        elev_url = (
+            f"https://api.open-meteo.com/v1/elevation"
+            f"?latitude={lat}&longitude={lon}"
+        )
+        elev_resp = requests.get(elev_url, timeout=8)
+        elev_resp.raise_for_status()
+        altitude_m = elev_resp.json()["elevation"][0]
+
+        # Current weather (temperature + surface pressure)
+        wx_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,surface_pressure"
+            f"&forecast_days=1"
+        )
+        wx_resp = requests.get(wx_url, timeout=8)
+        wx_resp.raise_for_status()
+        current = wx_resp.json()["current"]
+        temperature_c = current["temperature_2m"]
+        pressure_hpa  = current["surface_pressure"]
+
+        # Reverse-geocode for a human-readable city name (nominatim)
+        geo_url = (
+            f"https://nominatim.openstreetmap.org/reverse"
+            f"?lat={lat}&lon={lon}&format=json"
+        )
+        geo_resp = requests.get(
+            geo_url, timeout=8,
+            headers={"User-Agent": "SimuladorDinamometro/1.0"}
+        )
+        city = "Localização desconhecida"
+        if geo_resp.ok:
+            addr = geo_resp.json().get("address", {})
+            city = (
+                addr.get("city")
+                or addr.get("town")
+                or addr.get("village")
+                or addr.get("county")
+                or addr.get("state")
+                or city
+            )
+
+        return {
+            "altitude_m":    altitude_m,
+            "temperature_c": temperature_c,
+            "pressure_hpa":  pressure_hpa,
+            "city":          city,
+        }
+    except Exception:
+        return None
+
+
+def calc_air_density(temperature_c: float, pressure_hpa: float) -> float:
+    """
+    ρ = P / (R_specific × T)
+    R_specific for dry air = 287.05 J/(kg·K)
+    """
+    T = temperature_c + 273.15          # Kelvin
+    P = pressure_hpa * 100.0            # Pa
+    R = 287.05                          # J/(kg·K)
+    return P / (R * T)
 
 st.set_page_config(page_title="Simulador Dinamômetro Moto", layout="wide")
 st.title("🚀 Simulador de Dinamômetro com Freio Hidráulico")
@@ -30,10 +105,120 @@ CdA = st.sidebar.slider(
     "CdA - Área Frontal Efetiva (m²)", 0.3, 1.2, 0.6, 0.05,
     help="Produto do coeficiente de arrasto aerodinâmico (Cd) pela área frontal (A) da moto+piloto. Determina a força de arrasto (F_d = ½ × ρ × v² × CdA), que cresce com o quadrado da velocidade. Valores típicos para motos: 0,3–1,2 m²."
 )
-rho = st.sidebar.number_input(
-    "Densidade do Ar (kg/m³)", value=1.225,
-    help="Densidade do ar no local do ensaio. Varia com altitude e temperatura: ao nível do mar a 15 °C vale 1,225 kg/m³; em altitudes elevadas ou dias quentes o valor é menor, reduzindo o arrasto aerodinâmico. Valor padrão ISA: 1,225 kg/m³."
+# ── Densidade do Ar ─────────────────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.subheader("🌍 Densidade do Ar (kg/m³)")
+
+usar_geolocalizacao = st.sidebar.checkbox(
+    "Usar geolocalização para ajustar densidade",
+    value=False,
+    help=(
+        "Quando ativado, detecta sua localização pelo navegador e consulta "
+        "altitude, temperatura e pressão atmosférica reais via Open-Meteo "
+        "para calcular a densidade do ar automaticamente."
+    ),
 )
+
+if usar_geolocalizacao:
+    # Import here so the app still works if the package is not installed
+    try:
+        from streamlit_geolocation import streamlit_geolocation
+        _geo_available = True
+    except ImportError:
+        _geo_available = False
+
+    if not _geo_available:
+        st.sidebar.error(
+            "⚠️ Pacote `streamlit-geolocation` não encontrado. "
+            "Adicione-o ao requirements.txt e reinicie o app."
+        )
+        rho = st.sidebar.number_input(
+            "Densidade do Ar (kg/m³)", value=1.225, min_value=0.5, max_value=2.0, step=0.001,
+            format="%.3f",
+            help="Valor padrão ISA ao nível do mar a 15 °C.",
+        )
+    else:
+        location = streamlit_geolocation()
+
+        geo_lat  = location.get("latitude")  if location else None
+        geo_lon  = location.get("longitude") if location else None
+
+        if geo_lat is None or geo_lon is None:
+            st.sidebar.info(
+                "📍 Aguardando permissão de localização do navegador… "
+                "Clique em **Permitir** quando solicitado."
+            )
+            rho = st.sidebar.number_input(
+                "Densidade do Ar (kg/m³)", value=1.225, min_value=0.5, max_value=2.0, step=0.001,
+                format="%.3f",
+                help="Será substituído automaticamente após a localização ser detectada.",
+            )
+        else:
+            # Cache the API call so it doesn't fire on every widget interaction
+            @st.cache_data(ttl=300, show_spinner=False)
+            def _get_weather(lat, lon):
+                return fetch_weather_and_altitude(lat, lon)
+
+            with st.sidebar:
+                with st.spinner("Consultando dados meteorológicos…"):
+                    weather = _get_weather(round(geo_lat, 4), round(geo_lon, 4))
+
+            if weather is None:
+                st.sidebar.warning(
+                    "⚠️ Não foi possível obter dados meteorológicos. "
+                    "Verifique sua conexão ou use o valor manual abaixo."
+                )
+                rho = st.sidebar.number_input(
+                    "Densidade do Ar (kg/m³)", value=1.225, min_value=0.5, max_value=2.0, step=0.001,
+                    format="%.3f",
+                )
+            else:
+                rho_calculado = calc_air_density(
+                    weather["temperature_c"], weather["pressure_hpa"]
+                )
+
+                # Show location info in an expander inside the sidebar
+                with st.sidebar.expander("📊 Dados da localização", expanded=True):
+                    st.markdown(f"**📍 Local:** {weather['city']}")
+                    st.markdown(f"**🏔️ Altitude:** {weather['altitude_m']:.0f} m")
+                    st.markdown(f"**🌡️ Temperatura:** {weather['temperature_c']:.1f} °C")
+                    st.markdown(f"**🔵 Pressão:** {weather['pressure_hpa']:.1f} hPa")
+                    st.markdown(f"**💨 ρ calculada:** `{rho_calculado:.4f}` kg/m³")
+                    st.caption(f"Atualizado em: {datetime.now().strftime('%H:%M:%S')}")
+
+                    if st.button("🔄 Atualizar localização"):
+                        st.cache_data.clear()
+                        st.rerun()
+
+                # Allow manual override of the calculated value
+                rho = st.sidebar.number_input(
+                    "Densidade do Ar (kg/m³)",
+                    value=round(rho_calculado, 4),
+                    min_value=0.5,
+                    max_value=2.0,
+                    step=0.001,
+                    format="%.4f",
+                    help=(
+                        "Valor calculado automaticamente com base na sua localização. "
+                        "Você pode ajustar manualmente se necessário."
+                    ),
+                )
+else:
+    rho = st.sidebar.number_input(
+        "Densidade do Ar (kg/m³)",
+        value=1.225,
+        min_value=0.5,
+        max_value=2.0,
+        step=0.001,
+        format="%.3f",
+        help=(
+            "Densidade do ar no local do ensaio. Varia com altitude e temperatura: "
+            "ao nível do mar a 15 °C vale 1,225 kg/m³; em altitudes elevadas ou dias "
+            "quentes o valor é menor, reduzindo o arrasto aerodinâmico. "
+            "Valor padrão ISA: 1,225 kg/m³."
+        ),
+    )
+st.sidebar.markdown("---")
 torque_freio_max_Nm = st.sidebar.slider(
     "Torque Máx Freio Hidráulico (Nm)", 50, 500, 200, 10,
     help="Torque máximo que o freio hidráulico consegue aplicar ao rolo. Limita a força de frenagem disponível para absorver a potência da moto; se o torque de perdas calculado superar este valor, o freio opera no limite. Valores típicos: 50–500 Nm."
